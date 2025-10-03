@@ -30,7 +30,7 @@ A WordPress plugin that enables Bitcoin Lightning Network payments for WooCommer
 
 1. Visit [coinos.io](https://coinos.io)
 2. Create an account or log in
-3. Generate an API key from your account settings
+3. Find your API Key at [coinos.io/docs](https://coinos.io/docs))
 4. Copy the JWT token for use in the plugin settings
 
 ## API Key Format
