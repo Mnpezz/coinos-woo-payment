@@ -23,7 +23,7 @@ A WordPress plugin that enables Bitcoin Lightning Network payments for WooCommer
 2. Find "Coinos Lightning Payment" and click "Manage"
 3. Enable the gateway
 4. Enter your Coinos API key (JWT token)
-5. Configure the payment type (Lightning Network or Bitcoin On-Chain)
+5. Configure the payment type (Lightning Network)
 6. Set the title and description for checkout
 
 ## Getting Your Coinos API Key
@@ -54,14 +54,6 @@ Once configured, customers will see the Coinos Lightning payment option at check
 
 The plugin automatically sets up webhooks for payment confirmation. No additional configuration is required.
 
-## Development
-
-To build the frontend assets:
-
-```bash
-npm install
-npm run build
-```
 
 ## Requirements
 
