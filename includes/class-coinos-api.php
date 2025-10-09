@@ -20,12 +20,19 @@ class Coinos_API {
     /**
      * Create a lightning invoice
      */
-    public function create_lightning_invoice($amount, $webhook_url = '', $secret = '') {
+    public function create_lightning_invoice($amount, $webhook_url = '', $secret = '', $currency = 'USD', $fiat = true) {
+        $invoice_data = array(
+            'amount' => $amount,
+            'type' => 'lightning'
+        );
+        
+        // Add fiat flag if amount is in fiat currency
+        if ($fiat) {
+            $invoice_data['fiat'] = true;
+        }
+        
         $data = array(
-            'invoice' => array(
-                'amount' => $amount,
-                'type' => 'lightning'
-            )
+            'invoice' => $invoice_data
         );
         
         // Add webhook if provided
