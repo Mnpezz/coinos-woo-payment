@@ -3,7 +3,7 @@
  * Plugin Name: Coinos Lightning Payment Gateway
  * Plugin URI: https://github.com/mnpezz/coinos-woo-payment
  * Description: Accept Bitcoin Lightning Network payments via Coinos API for WooCommerce
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: mnpezz
  * License: GPL v2 or later
  * Text Domain: coinos-lightning-payment
