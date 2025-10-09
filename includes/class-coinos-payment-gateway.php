@@ -162,10 +162,8 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
             return;
         }
         
-        $btc_amount = $payment_data['btc_amount'];
-        $usd_amount = $payment_data['usd_amount'];
         $payment_text = $payment_data['payment_text'];
-        $payment_hash = $payment_data['payment_hash'];
+        $usd_amount = $payment_data['usd_amount'];
         
         ?>
         <div id="coinos-lightning-payment" class="coinos-lightning-payment-container">
@@ -271,28 +269,18 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
     private function create_fresh_payment_data($order) {
         $amount = $order->get_total();
         $currency = $order->get_currency();
-        $description = sprintf(__('Order #%s', 'coinos-lightning-payment'), $order->get_order_number());
         
-        // Check if API key is set
-        if (empty($this->api_key)) {
+        if (empty($this->api_key) || !$this->coinos_api) {
             return false;
         }
         
-        // Check if API is initialized
-        if (!$this->coinos_api) {
-            return false;
-        }
-        
-        // Create webhook URL for this order
         $webhook_url = add_query_arg(array(
             'wc-api' => 'coinos_lightning_webhook',
             'order_id' => $order->get_id()
         ), home_url('/'));
         
-        // Convert USD to satoshis using current BTC price
         $satoshis = $this->convert_to_satoshis($amount, $currency);
         
-        // Create Lightning invoice using Coinos API - pass satoshis directly (fiat=false)
         $invoice_response = $this->coinos_api->create_lightning_invoice($satoshis, $webhook_url, 'order_' . $order->get_id(), $currency, false);
         
         if (!$invoice_response['success']) {
@@ -301,15 +289,18 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
         
         $invoice_data = $invoice_response['data'];
         
-        // Get the actual satoshi amount from Coinos API response
+        // Cache Coinos rate for future use
+        if (isset($invoice_data['rate']) && $invoice_data['rate'] > 0) {
+            set_transient('coinos_btc_price', floatval($invoice_data['rate']), 300);
+        }
+        
         $actual_satoshis = isset($invoice_data['amount']) ? $invoice_data['amount'] : 0;
         
-        // Store payment data
         $payment_data = array(
             'invoice_hash' => $invoice_data['hash'],
             'payment_text' => $invoice_data['text'],
-            'btc_amount' => $actual_satoshis / 100000000, // Convert satoshis to BTC
-            'satoshis' => $actual_satoshis, // Store satoshis for display
+            'btc_amount' => $actual_satoshis / 100000000,
+            'satoshis' => $actual_satoshis,
             'usd_amount' => $amount,
             'currency' => $invoice_data['currency'],
             'created_at' => time()
@@ -321,34 +312,31 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
     }
     
     /**
-     * Convert amount to satoshis using current BTC price
+     * Convert USD amount to satoshis using current BTC price
      */
     private function convert_to_satoshis($amount, $currency) {
         if ($currency === 'USD') {
-            // Get current BTC price from CoinGecko API
             $btc_price = $this->get_btc_price();
             
             if ($btc_price > 0) {
                 $btc_amount = $amount / $btc_price;
-                return intval($btc_amount * 100000000); // Convert to satoshis
+                return intval($btc_amount * 100000000);
             }
         }
         
-        // Default fallback - assume it's already in satoshis
         return intval($amount);
     }
     
     /**
-     * Get current BTC price from CoinGecko API
+     * Get current BTC/USD price
+     * Uses cached rate from Coinos invoice or fetches from CoinGecko
      */
     private function get_btc_price() {
-        // Try to get cached price (cache for 5 minutes)
         $cached_price = get_transient('coinos_btc_price');
         if ($cached_price !== false) {
             return floatval($cached_price);
         }
         
-        // Fetch current BTC price from CoinGecko (free, no API key needed)
         $response = wp_remote_get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', array(
             'timeout' => 5
         ));
@@ -359,14 +347,12 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
             
             if (isset($data['bitcoin']['usd'])) {
                 $btc_price = floatval($data['bitcoin']['usd']);
-                // Cache for 5 minutes
                 set_transient('coinos_btc_price', $btc_price, 300);
                 return $btc_price;
             }
         }
         
-        // Fallback to a reasonable default if API fails
-        return 100000; // Default to ~$100k if API fails
+        return 120000;
     }
     
     /**
@@ -376,11 +362,7 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
         $raw_body = file_get_contents('php://input');
         $data = json_decode($raw_body, true);
         
-        // Log webhook for debugging
-        error_log('Coinos Webhook received: ' . print_r($data, true));
-        
         if (!$data || !isset($data['hash'])) {
-            error_log('Coinos Webhook: Invalid webhook data');
             status_header(400);
             exit;
         }
@@ -388,14 +370,11 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
         $invoice_hash = $data['hash'];
         $received_amount = isset($data['received']) ? $data['received'] : 0;
         
-        // Find order by invoice hash
         $order = $this->find_order_by_invoice_hash($invoice_hash);
         
         if ($order && !$order->is_paid() && $received_amount > 0) {
-            // Payment received! Mark order as paid
             $order->payment_complete();
             $order->add_order_note(__('Lightning payment completed via Coinos webhook', 'coinos-lightning-payment'));
-            error_log('Coinos Webhook: Order ' . $order->get_id() . ' marked as paid');
         }
         
         status_header(200);
