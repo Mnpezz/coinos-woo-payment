@@ -283,17 +283,15 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
             return false;
         }
         
-        // Convert amount to satoshis if needed (Coinos expects satoshis for Lightning)
-        $satoshis = $this->convert_to_satoshis($amount, $currency);
-        
         // Create webhook URL for this order
         $webhook_url = add_query_arg(array(
             'wc-api' => 'coinos_lightning_webhook',
             'order_id' => $order->get_id()
         ), home_url('/'));
         
-        // Create Lightning invoice using Coinos API
-        $invoice_response = $this->coinos_api->create_lightning_invoice($satoshis, $webhook_url, 'order_' . $order->get_id());
+        // Create Lightning invoice using Coinos API - pass USD amount directly
+        // Coinos will handle the USD to satoshi conversion with current rates
+        $invoice_response = $this->coinos_api->create_lightning_invoice($amount, $webhook_url, 'order_' . $order->get_id(), $currency, true);
         
         if (!$invoice_response['success']) {
             return false;
@@ -301,12 +299,15 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
         
         $invoice_data = $invoice_response['data'];
         
+        // Get the actual satoshi amount from Coinos API response
+        $actual_satoshis = isset($invoice_data['amount']) ? $invoice_data['amount'] : 0;
+        
         // Store payment data
         $payment_data = array(
             'invoice_hash' => $invoice_data['hash'],
             'payment_text' => $invoice_data['text'],
-            'btc_amount' => $satoshis / 100000000, // Convert satoshis to BTC
-            'satoshis' => $satoshis, // Store satoshis for display
+            'btc_amount' => $actual_satoshis / 100000000, // Convert satoshis to BTC
+            'satoshis' => $actual_satoshis, // Store satoshis for display
             'usd_amount' => $amount,
             'currency' => $invoice_data['currency'],
             'created_at' => time()
