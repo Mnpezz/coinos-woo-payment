@@ -65,6 +65,11 @@ The plugin automatically sets up webhooks for payment confirmation. No additiona
 
 For support and bug reports, please visit the plugin's GitHub repository.
 
+## Related Plugins:
+
+* [Lightning Rewards with Coinos](https://github.com/Mnpezz/coinos-wordpress-rewards)
+* [Payment with Strike](https://github.com/Mnpezz/strike-woo-payment)
+
 ## License
 
 GPL v2 or later
