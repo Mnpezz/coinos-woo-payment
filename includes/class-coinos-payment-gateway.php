@@ -289,9 +289,11 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
             'order_id' => $order->get_id()
         ), home_url('/'));
         
-        // Create Lightning invoice using Coinos API - pass USD amount directly
-        // Coinos will handle the USD to satoshi conversion with current rates
-        $invoice_response = $this->coinos_api->create_lightning_invoice($amount, $webhook_url, 'order_' . $order->get_id(), $currency, true);
+        // Convert USD to satoshis using current BTC price
+        $satoshis = $this->convert_to_satoshis($amount, $currency);
+        
+        // Create Lightning invoice using Coinos API - pass satoshis directly (fiat=false)
+        $invoice_response = $this->coinos_api->create_lightning_invoice($satoshis, $webhook_url, 'order_' . $order->get_id(), $currency, false);
         
         if (!$invoice_response['success']) {
             return false;
@@ -319,20 +321,52 @@ class WC_Gateway_Coinos_Lightning extends WC_Payment_Gateway {
     }
     
     /**
-     * Convert amount to satoshis
+     * Convert amount to satoshis using current BTC price
      */
     private function convert_to_satoshis($amount, $currency) {
-        // For now, assume USD and use a simple conversion
-        // In production, you'd want to use real-time exchange rates
         if ($currency === 'USD') {
-            // More realistic conversion: 1 USD ≈ 0.000025 BTC (adjust based on current rates)
-            // This is roughly $40,000 per BTC
-            $btc_amount = $amount * 0.000025;
-            return intval($btc_amount * 100000000); // Convert to satoshis
+            // Get current BTC price from CoinGecko API
+            $btc_price = $this->get_btc_price();
+            
+            if ($btc_price > 0) {
+                $btc_amount = $amount / $btc_price;
+                return intval($btc_amount * 100000000); // Convert to satoshis
+            }
         }
         
         // Default fallback - assume it's already in satoshis
         return intval($amount);
+    }
+    
+    /**
+     * Get current BTC price from CoinGecko API
+     */
+    private function get_btc_price() {
+        // Try to get cached price (cache for 5 minutes)
+        $cached_price = get_transient('coinos_btc_price');
+        if ($cached_price !== false) {
+            return floatval($cached_price);
+        }
+        
+        // Fetch current BTC price from CoinGecko (free, no API key needed)
+        $response = wp_remote_get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', array(
+            'timeout' => 5
+        ));
+        
+        if (!is_wp_error($response)) {
+            $body = wp_remote_retrieve_body($response);
+            $data = json_decode($body, true);
+            
+            if (isset($data['bitcoin']['usd'])) {
+                $btc_price = floatval($data['bitcoin']['usd']);
+                // Cache for 5 minutes
+                set_transient('coinos_btc_price', $btc_price, 300);
+                return $btc_price;
+            }
+        }
+        
+        // Fallback to a reasonable default if API fails
+        return 100000; // Default to ~$100k if API fails
     }
     
     /**
